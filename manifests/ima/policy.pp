@@ -7,8 +7,6 @@
 # @see Kernel documentation Documentation/ABI/testing/ima_policy
 # @see https://git.kernel.org/cgit/linux/kernel/git/stable/linux-stable.git/tree/Documentation/ABI/testing/ima_policy?id=refs/tags/v3.10.103
 #
-# @param manage Enable policy management
-#
 # @param dont_watch_proc If true, disable IMA hashing of procfs
 #   filesystems, as noted by the kernel magic documentation above.
 # @param dont_watch_sysfs If true, disable IMA hashing of sysfs
@@ -71,7 +69,6 @@
 # @author Nick Miller <nick.miller@onyxpoint.com>
 #
 class tpm::ima::policy (
-  Boolean $manage = false,
 
   # magic filesystems, default settings
   Boolean $dont_watch_proc       = true,
@@ -142,75 +139,46 @@ class tpm::ima::policy (
     wtmp_t           => $dont_watch_wtmp_t,
   }
 
-  if $manage {
-    file { '/etc/ima':
-      ensure => directory,
-      mode   => '0750',
-    }
+  file { '/etc/ima':
+    ensure => directory,
+    mode   => '0750',
+  }
 
-    file { '/etc/ima/policy.conf':
-      ensure  => file,
-      mode    => '0640',
-      content => template('tpm/ima_policy.conf.erb'),
-      require => File['/etc/ima'],
-      notify  => Exec['load_ima_policy']
-    }
+  file { '/etc/ima/policy.conf':
+    ensure  => file,
+    owner   => 'root',
+    mode    => '0640',
+    content => template('tpm/ima_policy.conf.erb'),
+    require => File['/etc/ima'],
+    notify  => Exec['load_ima_policy']
+  }
 
-    exec { 'load_ima_policy':
-      command => 'cat /etc/ima/policy.conf > /sys/kernel/security/ima/policy',
-      unless  => 'grep ima_reboot `puppet config print vardir`/reboot_notifications.json',
-      path    => '/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin',
+  if member($facts['init_systems'], 'systemd') {
+  # Create a hardlink to the custom policy so it is loaded by
+  # systemd at startup.
+    exec { 'systemd_load_policy':
+      command => 'ln /etc/ima/ima-policy.systemd /etc/ima/policy.conf',
+      creates => '/etc/ima/ima-policy.systemd',
+      path    => '/sbin:/bin:/usr/sbin:/usr/bin',
       require => File['/etc/ima/policy.conf'],
     }
-
-    if member($facts['init_systems'], 'systemd') {
-      file { '/etc/systemd/system/import_ima_rules.service':
-        ensure => file,
-        mode   => '0644',
-        source => 'puppet:///modules/tpm/import_ima_rules.service'
-      }
-      service { 'import_ima_rules.service':
-        # This service is of type one-shot, meaning it isn't able to be running
-        # It is left stopped and enabled to make sure it only runs once at boot
-        ensure  => stopped,
-        enable  => true,
-        require => File['/etc/systemd/system/import_ima_rules.service']
-      }
+  } else {
+    file { '/etc/init.d/import_ima_rules':
+      ensure => file,
+      mode   => '0755',
+      source => 'puppet:///modules/tpm/import_ima_rules'
     }
-    else {
-      file { '/etc/init.d/import_ima_rules':
-        ensure => file,
-        mode   => '0755',
-        source => 'puppet:///modules/tpm/import_ima_rules'
-      }
-      service { 'import_ima_rules':
-        # This service is of type one-shot, meaning it isn't able to be running
-        # It is left stopped and enabled to make sure it only runs once at boot
-        ensure  => stopped,
-        enable  => true,
-        require => File['/etc/init.d/import_ima_rules']
-      }
-    }
-  }
-  else {
-    if member($facts['init_systems'], 'systemd') {
-      file { '/etc/systemd/system/import_ima_rules.service':
-        ensure => absent,
-      }
-      service { 'import_ima_rules.service':
-        ensure => stopped,
-        enable => false,
-      }
-    }
-    else {
-      file { '/etc/init.d/import_ima_rules':
-        ensure => absent,
-      }
-      service { 'import_ima_rules':
-        ensure => stopped,
-        enable => false,
-      }
+    service { 'import_ima_rules':
+      ensure  => stopped,
+      enable  => true,
+      require => File['/etc/init.d/import_ima_rules']
     }
   }
 
+  exec { 'load_ima_policy':
+    command     => 'cat /etc/ima/policy.conf > /sys/kernel/security/ima/policy',
+    refreshonly => true,
+    path        => '/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin',
+    require     => File['/etc/ima/policy.conf'],
+  }
 }
