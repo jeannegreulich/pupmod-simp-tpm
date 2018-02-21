@@ -42,6 +42,12 @@ class tpm::ima::appraise(
           }
           'not_set': {
             #  If the attributes are not set and the update is not running start the update
+            file { '/usr/local/bin/ima_security_attr_update.sh':
+              ensure => file,
+              owner  => 'root',
+              mode   => '0700',
+              source => 'puppet:///modules/tpm/ima_security_attr_update.sh'
+            }
             exec { 'ima_security_attr_update':
               command => '/usr/local/bin/ima_security_attr_update.sh &',
               unless  => 'grep ima_appraise_reboot `puppet config print vardir`/reboot_notifications.json',
