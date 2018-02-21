@@ -13,7 +13,6 @@ class tpm::ima::appraise(
       ensure => $package_ensure
     }
 
-
     kernel_parameter { 'ima_appraise_tcb':
       notify   => Reboot_notify['ima_appraise_reboot'],
       bootmode => 'normal'
@@ -25,19 +24,24 @@ class tpm::ima::appraise(
         # have been added to the file system which is done by the fact ima_ext_attr
         case  $facts['ima_ext_attr'] {
           'set': {
-          # If the attributes have been set then update the kernel parameter and notify reboot
+            # If the attributes have been set then update the kernel parameter and notify reboot
             kernel_parameter { 'ima_appraise':
               value    => 'enforce',
               bootmode => 'normal',
-              notify   => Reboot_notify['ima_appraise_enforce_reboot']
+              notify   => [ Reboot_notify['ima_appraise_enforce_reboot'], Exec['dracut ima appraise rebuild']]
             }
             reboot_notify { 'ima_appraise_enforce_reboot':
               subscribe => Kernel_parameter['ima_appraise']
             }
+            exec { 'dracut ima appraise rebuild':
+              command     => '/sbin/dracut -f',
+              subscribe   => Kernel_parameter['ima_appraise'],
+              refreshonly => true
+            }
 
           }
           'not_set': {
-          #  If the attributes are not set and the update is not running start the update
+            #  If the attributes are not set and the update is not running start the update
             exec { 'ima_security_attr_update':
               command => '/usr/local/bin/ima_security_attr_update.sh &',
               unless  => 'grep ima_appraise_reboot `puppet config print vardir`/reboot_notifications.json',
@@ -46,12 +50,15 @@ class tpm::ima::appraise(
             }
           }
           'updating': {
+            # The updates are running so do nothing this run
             notify {'IMA Updates running':
               message  => 'Do not reboot until the the ima_security_attr_update.sh script completes running',
               loglevel => 'warning'
             }
-          } # The updates are running so do nothing this run
+          }
           default: {
+            # The status is unknown which means the following file is missing and needs to be
+            # recreated.  This shouldn't happen.
             file { '/usr/local/bin/ima_security_attr_update.sh':
               ensure => file,
               owner  => 'root',
@@ -61,7 +68,7 @@ class tpm::ima::appraise(
           }
         }
       }
-      'enforce','off': {
+      'enforce': {
         file { '/usr/local/bin/ima_security_attr_update.sh':
           ensure => absent
         }

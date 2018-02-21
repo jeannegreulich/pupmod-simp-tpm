@@ -69,6 +69,7 @@
 # @author Nick Miller <nick.miller@onyxpoint.com>
 #
 class tpm::ima::policy (
+  Boolean $manage                = false,
 
   # magic filesystems, default settings
   Boolean $dont_watch_proc       = true,
@@ -139,46 +140,79 @@ class tpm::ima::policy (
     wtmp_t           => $dont_watch_wtmp_t,
   }
 
-  file { '/etc/ima':
-    ensure => directory,
-    mode   => '0750',
-  }
+  if $manage {
 
-  file { '/etc/ima/policy.conf':
-    ensure  => file,
-    owner   => 'root',
-    mode    => '0640',
-    content => template('tpm/ima_policy.conf.erb'),
-    require => File['/etc/ima'],
-    notify  => Exec['load_ima_policy']
-  }
+    file { '/etc/ima':
+      ensure => directory,
+      mode   => '0750',
+    }
 
-  if member($facts['init_systems'], 'systemd') {
-  # Create a hardlink to the custom policy so it is loaded by
-  # systemd at startup.
-    exec { 'systemd_load_policy':
-      command => 'ln /etc/ima/ima-policy.systemd /etc/ima/policy.conf',
-      creates => '/etc/ima/ima-policy.systemd',
-      path    => '/sbin:/bin:/usr/sbin:/usr/bin',
-      require => File['/etc/ima/policy.conf'],
+    file { '/etc/ima/policy.conf':
+      ensure  => file,
+      owner   => 'root',
+      mode    => '0640',
+      content => template('tpm/ima_policy.conf.erb'),
+      require => File['/etc/ima'],
+      notify  => Exec['load_ima_policy']
+    }
+
+    if member($facts['init_systems'], 'systemd') {
+    # Create a hardlink to the custom policy so it is loaded by
+    # systemd at startup.
+      file { '/usr/lib/systemd/system/import_ima_rules.service':
+        ensure => file,
+        mode   => '0644',
+        source => 'puppet:///modules/tpm/import_ima_rules.service'
+      }
+      service { 'import_ima_rules.service':
+        ensure  => running,
+        enable  => true,
+        require => File['/usr/lib/systemd/system/import_ima_rules.service']
+      }
+      exec { 'systemd_load_policy':
+        command => 'ln /etc/ima/policy.conf /etc/ima/ima-policy.systemd',
+        creates => '/etc/ima/ima-policy.systemd',
+        path    => '/sbin:/bin:/usr/sbin:/usr/bin',
+        require => File['/etc/ima/policy.conf'],
+      }
+    } else {
+      file { '/etc/init.d/import_ima_rules':
+        ensure => file,
+        mode   => '0755',
+        source => 'puppet:///modules/tpm/import_ima_rules'
+      }
+      service { 'import_ima_rules':
+        ensure  => stopped,
+        enable  => true,
+        require => File['/etc/init.d/import_ima_rules']
+      }
+    }
+    exec { 'load_ima_policy':
+      command     => 'cat /etc/ima/policy.conf > /sys/kernel/security/ima/policy',
+      refreshonly => true,
+      path        => '/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin',
+      require     => File['/etc/ima/policy.conf'],
     }
   } else {
-    file { '/etc/init.d/import_ima_rules':
-      ensure => file,
-      mode   => '0755',
-      source => 'puppet:///modules/tpm/import_ima_rules'
-    }
-    service { 'import_ima_rules':
-      ensure  => stopped,
-      enable  => true,
-      require => File['/etc/init.d/import_ima_rules']
+
+    if member($facts['init_systems'], 'systemd') {
+
+      file { '/usr/lib/systemd/system/import_ima_rules.service':
+        ensure => absent,
+      }
+      service { 'import_ima_rules.service':
+        ensure => stopped,
+        enable => false,
+      }
+    } else {
+      file { '/etc/init.d/import_ima_rules':
+        ensure => absent,
+      }
+      service { 'import_ima_rules':
+        ensure => stopped,
+        enable => false,
+      }
     }
   }
 
-  exec { 'load_ima_policy':
-    command     => 'cat /etc/ima/policy.conf > /sys/kernel/security/ima/policy',
-    refreshonly => true,
-    path        => '/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin',
-    require     => File['/etc/ima/policy.conf'],
-  }
 }
