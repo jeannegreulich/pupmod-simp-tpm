@@ -27,7 +27,7 @@ class tpm::tboot::policy {
     exec { 'Generate and install tboot policy':
       command => "/usr/bin/sh ${policy_script} ${owner_password}",
       tries   => 1,
-      unless  => 'test -f /boot/list.data',
+      unless  => '/usr/bin/test -f /boot/list.data',
       require => File["${policy_script}"],
       notify  => Reboot_notify['Tboot Policy Change']
     }

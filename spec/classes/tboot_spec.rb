@@ -29,7 +29,7 @@ describe 'tpm::tboot' do
         let(:params) {{
           :tboot_version => '1.9.6',
         }}
-        if os_facts[:os][:release][:major].to_i == 7
+        if os_facts[:os][:release][:major].to_i >= 7
           it { is_expected.to compile.with_all_deps }
           it { is_expected.to contain_class('tpm') }
           it { is_expected.to contain_package('tboot') }
@@ -82,7 +82,7 @@ describe 'tpm::tboot' do
           :create_policy           => true,
           :lock_kernel_packages    => false
         }}
-        if os_facts[:os][:release][:major].to_i == 7
+        if os_facts[:os][:release][:major].to_i >= 7
           it { is_expected.to contain_file('/etc/default/grub-tboot').with_content(<<-EOF.gsub(/^\s+/,'').strip
             GRUB_CMDLINE_TBOOT="logging=vga,memory garbage"
             GRUB_CMDLINE_LINUX_TBOOT="logging=vga,memory garbage"
@@ -120,7 +120,7 @@ describe 'tpm::tboot' do
           :sinit_source => 'https://kickstart-server.domain/ks/2nd_gen_i5_i7_SINIT_51.BIN',
           :sinit_name   => '2nd_gen_i5_i7_SINIT_51.BIN'
         }}
-        if os_facts[:os][:release][:major].to_i == 7
+        if os_facts[:os][:release][:major].to_i >= 7
           it { is_expected.to contain_file('/root/txt/sinit').with_ensure('directory') }
           it { is_expected.to contain_file('/root/txt/sinit/2nd_gen_i5_i7_SINIT_51.BIN') }
           it { is_expected.to contain_file('/boot/2nd_gen_i5_i7_SINIT_51.BIN').with_source('/root/txt/sinit/2nd_gen_i5_i7_SINIT_51.BIN') }
@@ -136,7 +136,7 @@ describe 'tpm::tboot' do
           :sinit_name   => '2nd_gen_i5_i7_SINIT_51.BIN',
           :rsync_server => '127.0.0.1',
         }}
-        if os_facts[:os][:release][:major].to_i == 7
+        if os_facts[:os][:release][:major].to_i >= 7
           it { is_expected.to contain_file('/root/txt/sinit').with_ensure('directory') }
           it { is_expected.to contain_rsync('tboot').with_source('tboot_rp_env/') }
           it { is_expected.to contain_file('/boot/2nd_gen_i5_i7_SINIT_51.BIN').with_source('/root/txt/sinit/2nd_gen_i5_i7_SINIT_51.BIN') }
